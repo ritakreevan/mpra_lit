@@ -1,0 +1,3 @@
+#All SNPs coordinates are in GRCh37/hg19 coordinates
+#Roadmap Epigenomics mnemonics BED files downloaded via:
+wget -r --no-parent -A '*coreMarks_mnemonics.bed.gz*' https://egg2.wustl.edu/roadmap/data/byFileType/chromhmmSegmentations/ChmmModels/coreMarks/jointModel/final/ 
