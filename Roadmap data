@@ -1,3 +1,46 @@
 #All SNPs coordinates are in GRCh37/hg19 coordinates
 #Roadmap Epigenomics mnemonics BED files downloaded via:
 wget -r --no-parent -A '*coreMarks_mnemonics.bed.gz*' https://egg2.wustl.edu/roadmap/data/byFileType/chromhmmSegmentations/ChmmModels/coreMarks/jointModel/final/ 
+
+cat E002 E008 E001 E015 E014 E016 E003 E024 > ESC
+cat E020 E019 E018 E021 E022 > iPSC
+cat E007 E009 E010 E013 E012 E011 E004 E005 E006 > ES_derived_cells
+cat E062 E034 E045 E033 E044 E043 E039 E041 E042 E040 E037 E048 E038 E047 > TCells
+cat E029 E031 E035 E051 E050 E036 E032 E046 E030 > BCells
+cat E026 E049 E025 E023 > Mesenchymal
+cat E052 > Myosatellite
+cat E055 E056 E059 E061 E057 E058 E028 E027 > Epithelial
+cat E054 E053 > Neurospheres
+cat E112 E093 > Thymus
+cat E071 E074 E068 E069 E072 E067 E073 E070 E082 E081 > Brain
+cat E063 > Adipose
+cat E100 E108 E107 E089 E090 > Muscle
+cat E083 E104 E095 E105 E065 > Heart
+cat E078 E076 E103 E111 > Smooth_muscle
+cat E092 E085 E084 E109 E106 E075 E101 E102 E110 E077 E079 E094 > Digestive
+cat E099 E086 E088 E097 E087 E080 E091 E066 E098 E096 E113 > Other
+cat E114 E115 E116 E117 E118 E119 E120 E121 E122 E123 E124 E125 E126 E127 E128 E129 > ENCODE
+
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(GenomciRanges)
+library(biomartr)
+
+
+files <- list.files(pattern = "", full.names = TRUE)
+
+for (file in files) {
+  # Extract the table name from the file path
+  table_name <- tools::file_path_sans_ext(basename(file))
+  
+  # Read the data from the file using fread from data.table
+  data <- fread(file, header = FALSE, col.names = c('chrom', 'start', 'end', 'type'))
+  
+  # Add a 'Tissue' column with the original table name
+  data$Tissue <- table_name
+  
+  # Assign the data.table to a variable in the global environment
+  assign(table_name, data, envir = .GlobalEnv)
+}
