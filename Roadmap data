@@ -120,10 +120,13 @@ percentage_data <- overlaps %>%
 
 ggplot(percentage_data, aes(x = Tissue, y = percentage, fill = state)) +
   geom_bar(stat = "identity") +
-  geom_text(aes(label = sprintf("%.1f%%", percentage)), vjust = -0.5) +
+  geom_text(aes(label = sprintf("%.1f%%", percentage),
+                group = state),
+            position = position_stack(vjust = 0.5),
+            show.legend = FALSE)+
   labs(title = "Percentage of tested tariants by chromatin state",
        x = "Tissue",
        y = "Percentage") +
-  scale_y_continuous(labels = scales::percent_format()) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
   theme_cowplot() +
   theme(axis.text.x=element_text(angle=45, hjust= 1)) 
