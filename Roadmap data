@@ -44,3 +44,86 @@ for (file in files) {
   # Assign the data.table to a variable in the global environment
   assign(table_name, data, envir = .GlobalEnv)
 }
+
+results_list <- list()
+for (i in seq_along(table_list)) {
+  results <- foverlaps(tested_variants, table_list[[i]], type = "within", nomatch = 0)
+  results$Tissue <- colnames(table_list)[i]  # Add the tissue information
+  results$type <- table_list[[i]]$type  # Add the type information
+  results_list[[i]] <- results
+
+
+adipose_ov=foverlaps(tested_variants, Adipose, type = "within")
+brain_ov=foverlaps(tested_variants, Brain, type = "within")
+digestive_ov=foverlaps(tested_variants, Digestive, type = "within")
+epithelial_ov=foverlaps(tested_variants, Epithelial, type = "within")
+esc_ov=foverlaps(tested_variants, ESC, type = "within")
+ipsc_ov=foverlaps(tested_variants, iPSC, type = "within")
+mesenchymal_ov=foverlaps(tested_variants, Mesenchymal, type = "within")
+Myosatellite_ov=foverlaps(tested_variants, Myosatellite, type = "within")
+other_ov=foverlaps(tested_variants, Other, type = "within")
+tcells_ov=foverlaps(tested_variants, TCells, type = "within")
+thymus_ov=foverlaps(tested_variants, Thymus, type = "within")
+bcells_ov=foverlaps(tested_variants, BCells, type = "within")
+encode_ov=foverlaps(tested_variants, ENCODE, type = "within")
+ES_derived_cells_ov=foverlaps(tested_variants, ES_derived_cells, type = "within")
+heart_ov=foverlaps(tested_variants, Heart, type = "within")
+imr90_ov=foverlaps(tested_variants, IMR90_fetal_lung_fibroblast, type = "within")
+muscle_ov=foverlaps(tested_variants, Muscle, type = "within")
+neurospheres_ov=foverlaps(tested_variants, Neurospheres, type = "within")
+smooth_ov=foverlaps(tested_variants, Smooth_muscle, type = "within")
+
+overlaps_table = rbind(adipose_ov, brain_ov, digestive_ov, epithelial_ov, esc_ov, ipsc_ov, mesenchymal_ov,
+Myosatellite_ov,other_ov, tcells_ov, thymus_ov, bcells_ov, encode_ov, E
+
+#rename the roadmap versions
+overlaps_table$`type`[overlaps_table$`type` == "14_ReprPCWk"] <- "Weak Repressed PolyComb"
+overlaps_table$`type`[overlaps_table$`type` == "1_TssA"] <- "Active TSS"
+overlaps_table$`type`[overlaps_table$`type` == "2_TssAFlnk"] <- "Flanking Active TSS"
+overlaps_table$`type`[overlaps_table$`type` == "3_TxFlnk"] <- "Transcr. at gene 5' and 3'"
+overlaps_table$`type`[overlaps_table$`type` == "4_Tx"] <- "Strong transcription"
+overlaps_table$`type`[overlaps_table$`type` == "5_TxWk"] <- "Weak transcription"
+overlaps_table$`type`[overlaps_table$`type` == "6_EnhG"] <- "Genic enhancers"
+overlaps_table$`type`[overlaps_table$`type` == "7_Enh"] <- "Enhancers"
+overlaps_table$`type`[overlaps_table$`type` == "8_ZNF/Rpts"] <- "ZNF genes & repeats"
+overlaps_table$`type`[overlaps_table$`type` == "9_Het"] <- "Heterochromatin"
+overlaps_table$`type`[overlaps_table$`type` == "10_TssBiv"] <- "Bivalent/Poised TSS"
+overlaps_table$`type`[overlaps_table$`type` == "11_BivFlnk"] <- "Flanking Bivalent TSS/Enh"
+overlaps_table$`type`[overlaps_table$`type` == "12_EnhBiv"] <- "Bivalent Enhancer"
+overlaps_table$`type`[overlaps_table$`type` == "13_ReprPC"] <- "Repressed PolyComb"
+overlaps_table$`type`[overlaps_table$`type` == "14_ReprPCWk"] <- "Weak Repressed PolyComb"
+overlaps_table$`type`[overlaps_table$`type` == "15_Quies"] <- "Quiescent/Low"
+
+#filter the active and inactive 
+overlaps_active <- filter(overlaps_table,`type` == "Active TSS" | `type` == "Flanking Active TSS" | 
+                       `type` == "Transcr. at gene 5' and 3'" | `type` == "Strong transcription" |
+                       `type` == "Weak transcription" | `type` == "Genic enhancers" |
+                       `type` == "Enhancers" | `type` ==  "ZNF genes & repeats")
+overlaps_active$state <- "Active"
+overlaps_inactive <- filter(overlaps_table,`type` == "Heterochromatin" | `type` == "Bivalent/Poised TSS" | 
+                        `type` == "Flanking Bivalent TSS/Enh" | `type` ==  "Bivalent Enhancer" |
+                        `type` == "Repressed PolyComb"| `type` == "Weak Repressed PolyComb" |
+                        `type` == "Quiescent/Low")
+
+overlaps_inactive <- filter(overlaps_table,`type` == "Heterochromatin" | `type` == "Bivalent/Poised TSS" |  
+                        `type` == "Flanking Bivalent TSS/Enh" | `type` ==  "Bivalent Enhancer" |
+                        `type` == "Repressed PolyComb"| `type` == "Weak Repressed PolyComb" |
+                        `type` == "Quiescent/Low")
+overlaps_inactive$state <- "Inactive"
+overlaps_combined = rbind(overlaps_active, overlaps_inactive)
+
+
+percentage_data <- overlaps %>%
+  group_by(Tissue, state) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+
+ggplot(percentage_data, aes(x = Tissue, y = percentage, fill = state)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = sprintf("%.1f%%", percentage)), vjust = -0.5) +
+  labs(title = "Percentage of tested tariants by chromatin state",
+       x = "Tissue",
+       y = "Percentage") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme_cowplot() +
+  theme(axis.text.x=element_text(angle=45, hjust= 1)) 
