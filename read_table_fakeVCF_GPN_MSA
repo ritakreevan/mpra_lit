@@ -39,10 +39,11 @@ table_output <- file.path("/Users/rita/Desktop/New_project_data/Results/output_t
 write.table(tested_variants, file = table_output, sep = "\t", row.names = FALSE, col.names = TRUE)
 
 
-#-------------------------------------
+#---------------------------------------------------------
 ## STEP 2
-#Read in snpID file, combine, for VEP
-#-------------------------------------
+#Read in snpID file, combine, for bcftools
+#This is the input for bcftools to get chrom-pos-ref-alt
+#---------------------------------------------------------
 
 combine_and_extract_unique <- function(folder_path, output_file) {
   files <- list.files(path = folder_path, 
@@ -65,6 +66,7 @@ rs.id = unique(rs.id)
 write.table(rs.id, file = "rs.id_bcftools.tsv", row.names = FALSE, col.names = FALSE, quote = FALSE)
 
 
+
 #--------------------------------------
 ## STEP 3
 ## Read in the bcftools RSid output
@@ -77,6 +79,7 @@ tested_variants = unique(tested_variants)
 
 #----------------------------------------
 ## for the Songlab, gnomad, GPN-MSA score
+## get a new table chrom:start-end
 #----------------------------------------
 
 new_table_songlab = function(tested_variants) {
