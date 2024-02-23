@@ -11,6 +11,7 @@ table_output = "./Results/output_tables/"
 plot_dir = "./Results/output_tables/plots/"
 
 #----------------------------------------------------------------------------
+## STEP 1
 ## Read in tables and make one mastetable with unique regions from each table
 #----------------------------------------------------------------------------
 
@@ -37,17 +38,46 @@ tested_variants = unique(tested_variants)
 table_output <- file.path("/Users/rita/Desktop/New_project_data/Results/output_tables", "tested_variants_table.tsv")
 write.table(tested_variants, file = table_output, sep = "\t", row.names = FALSE, col.names = TRUE)
 
-#forgot to read in the same time the output from bcftools, for the rs id 
-#used bcftools to get position-ref-alt for combined rsID tables
-colnames(rs.pos) = c("chrom", "pos", "ref", "alt")
-tested_variants = rbind(tested_variants, rs.pos)
+
+#-------------------------------------
+## STEP 2
+#Read in snpID file, combine, for VEP
+#-------------------------------------
+
+combine_and_extract_unique <- function(folder_path, output_file) {
+  files <- list.files(path = folder_path, 
+                      full.names = TRUE)
+  
+  unique_rs_ids <- c()
+  for (file in files) {
+    rs_ids <- read.table(file, header = FALSE, colClasses = "character")[, 1]
+    unique_rs_ids <- unique(c(unique_rs_ids, rs_ids))
+  }
+  unique_table <- data.frame(rs_id = unique_rs_ids)
+  write.table(unique_table, file = output_file, quote = FALSE, row.names = FALSE, col.names = TRUE)
+}
+
+folder_path <- "/Users/rita/Desktop/New_project_data/Results/Tested_variants/rs_id"
+output_file <- "/Users/rita/Desktop/New_project_data/Results/Tested_variants/rs_id/rs.id.xt"
+combine_and_extract_unique(folder_path, output_file)
+
+rs.id = unique(rs.id)
+write.table(rs.id, file = "rs.id_bcftools.tsv", row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+
+#--------------------------------------
+## STEP 3
+## Read in the bcftools RSid output
+## Contains chrom-pos-ref-alt
+#--------------------------------------
+
+colnames(rs.pos_bcfout) = c("chrom", "pos", "ref", "alt")
+tested_variants = rbind(tested_variants, rs.pos_bcfout)
 tested_variants = unique(tested_variants)
 
-
-
-#------------------------------------------
+#----------------------------------------
 ## for the Songlab, gnomad, GPN-MSA score
-#------------------------------------------
+#----------------------------------------
 
 new_table_songlab = function(tested_variants) {
   combined_table <- paste0(tested_variants$chrom, ":", tested_variants$pos, "-", tested_variants$pos)
@@ -61,10 +91,9 @@ songlab_table <- new_table_songlab(tested_variants)
 table_output <- file.path("/Users/rita/Desktop/New_project_data/Results/output_tables", "songlab_table.txt")
 write.table(songlab_table, file = table_output, row.names = FALSE, col.names = FALSE)
 
-
-#---------------------------------------------------------------
-##creating the fakevcf file to run all the variants through VEP
-#---------------------------------------------------------------
+#----------------------------------
+## Fake VCF for VEP
+#-----------------------------------
 
 create_fake_vcf_table <- function(tested_variants_table) {
   tested_variants_table$chrom <- gsub("X", "23", tested_variants_table$chrom)
@@ -87,11 +116,3 @@ create_fake_vcf_table <- function(tested_variants_table) {
 }
   
 fake_vcf_table <- create_fake_vcf_table(tested_variants)
-
-
-
-
-
-
-
-
