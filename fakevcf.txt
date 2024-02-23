@@ -6,6 +6,7 @@
 File = fake_vcf.vcf
 
 cat fake_vcf.vcf | sort -nk1,1 -nk2,2 > fake_vcf_sorted.vcf
+sed -i 's/\b23\b/X/1' fake_vcf_sorted.vcf
 module load bcftools
 bcftools view fake_vcf_sorted.vcf -Oz -o fake_vcf_sorted.vcf._after_bcftools.vcf.gz
 bcftools index fake_vcf_sorted.vcf._after_bcftools.vcf.gz
