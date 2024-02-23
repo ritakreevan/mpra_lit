@@ -1,0 +1,12 @@
+#Working with the fake vcf file, prepare it VEP
+1. add 2 fake headers
+  1.1 ##fileformat=VCFv4.1"
+  1.2 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+
+File = fake_vcf.vcf
+
+cat fake_vcf.vcf | sort -nk1,1 -nk2,2 > fake_vcf_sorted.vcf
+module load bcftools
+bcftools view fake_vcf_sorted.vcf -Oz -o fake_vcf_sorted.vcf._after_bcftools.vcf.gz
+bcftools index fake_vcf_sorted.vcf._after_bcftools.vcf.gz
+bcftools norm -m - fake_vcf_sorted.vcf._after_bcftools.vcf.gz -Ov -o VEP_input_normalised.vcf
