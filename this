@@ -1,0 +1,97 @@
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(GenomciRanges)
+library(biomartr)
+library(motifbreakR)
+library(cowplot)
+
+table_output = "./Results/output_tables/"
+plot_dir = "./Results/output_tables/plots/"
+
+#----------------------------------------------------------------------------
+## Read in tables and make one mastetable with unique regions from each table
+#----------------------------------------------------------------------------
+
+read_table <- function(folder_path) {
+  files <- list.files(path = "/Users/rita/Desktop/New_project_data/Results/Tested_variants/positions", 
+                      full.names = TRUE)
+  master_table <- data.frame()
+  for (file in files) {
+    table_data <- read.table(file, header = FALSE, fill = TRUE, stringsAsFactors = FALSE)
+    unique_lines <- unique(table_data)
+    master_table <- rbind(master_table, unique_lines)
+  }
+  
+  col_names <- c("chrom", "pos", "ref", "alt")
+  names(master_table) <- col_names
+  assign("tested_variants", master_table, envir = .GlobalEnv)
+  return(master_table)
+}
+
+folder_path <- "/Tested_variants/positions"
+tested_variants <- read_table( "/Users/rita/Desktop/New_project_data/Results/Tested_variants/positions")
+tested_variants = unique(tested_variants)
+
+table_output <- file.path("/Users/rita/Desktop/New_project_data/Results/output_tables", "tested_variants_table.tsv")
+write.table(tested_variants, file = table_output, sep = "\t", row.names = FALSE, col.names = TRUE)
+
+#forgot to read in the same time the output from bcftools, for the rs id 
+#used bcftools to get position-ref-alt for combined rsID tables
+colnames(rs.pos) = c("chrom", "pos", "ref", "alt")
+tested_variants = rbind(tested_variants, rs.pos)
+tested_variants = unique(tested_variants)
+
+
+
+#------------------------------------------
+## for the Songlab, gnomad, GPN-MSA score
+#------------------------------------------
+
+new_table_songlab = function(tested_variants) {
+  combined_table <- paste0(tested_variants$chrom, ":", tested_variants$pos, "-", tested_variants$pos)
+  new_table <- data.frame(combined_info = combined_table)
+  write.table(new_table, file = "combined_table.tsv", sep = "\t", row.names = FALSE, col.names = TRUE)
+  
+  return(new_table)
+}
+
+songlab_table <- new_table_songlab(tested_variants)
+table_output <- file.path("/Users/rita/Desktop/New_project_data/Results/output_tables", "songlab_table.txt")
+write.table(songlab_table, file = table_output, row.names = FALSE, col.names = FALSE)
+
+
+#---------------------------------------------------------------
+##creating the fakevcf file to run all the variants through VEP
+#---------------------------------------------------------------
+
+create_fake_vcf_table <- function(tested_variants_table) {
+  tested_variants_table$chrom <- gsub("X", "23", tested_variants_table$chrom)
+  fake_vcf_table <- data.frame(
+    "#CHROM" = tested_variants_table$chrom,
+    "POS" = tested_variants_table$pos,
+    "ID" = ".",
+    "REF" = tested_variants_table$ref,
+    "ALT" = tested_variants_table$alt,
+    "QUAL" = ".",
+    "FILTER" = "PASS",
+    "INFO" = ".",
+    "FORMAT" = "GT",
+    "FUNCTIONAL" = "1/1"
+  )
+  
+  write.table(fake_vcf_table, file = "fake_vcf_table.tsv", quote = FALSE, sep = "\t", row.names = FALSE, col.names = TRUE)
+  
+  return(fake_vcf_table)
+}
+  
+fake_vcf_table <- create_fake_vcf_table(tested_variants)
+
+
+
+
+
+
+
+
