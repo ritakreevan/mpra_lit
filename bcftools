@@ -1,0 +1,7 @@
+#For getting chr-pos-ref-alt for the files that contained only rs id
+#input was 44 508, output had 40 946
+
+for i in {1..23}; do bcftools view --include ID==@rs_list.tsv /gpfs/space/GI/references/annotation_references/dbSNP/155/split/hg19_chr$i.vcf.gz | 
+bcftools query -f'%CHROM\t%POS\t%REF\t%ALT\n' -o /gpfs/space/home/rita91/mpra_lit/bcf_output/chr$i.rs.tsv; done
+
+
