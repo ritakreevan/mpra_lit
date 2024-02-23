@@ -1,0 +1,22 @@
+#-------------------------------------------------------------------
+##Read in the RS_id files, combine into one table with uniqe values
+##This will go into bcftools, te get chrom-pos-ref-alt
+#-------------------------------------------------------------------
+
+combine_and_extract_unique <- function(folder_path, output_file) {
+  files <- list.files(path = folder_path, 
+                      full.names = TRUE)
+
+  unique_rs_ids <- c()
+  for (file in files) {
+    rs_ids <- read.table(file, header = FALSE, colClasses = "character")[, 1]
+    unique_rs_ids <- unique(c(unique_rs_ids, rs_ids))
+  }
+  unique_table <- data.frame(rs_id = unique_rs_ids)
+  write.table(unique_table, file = output_file, quote = FALSE, row.names = FALSE, col.names = TRUE)
+}
+
+
+folder_path <- "/Users/rita/Desktop/New_project_data/Results/Tested_variants/rs_id"
+output_file <- "/Users/rita/Desktop/New_project_data/Results/Tested_variants/rs_id/rs.id.xt"
+combine_and_extract_unique(folder_path, output_file)
