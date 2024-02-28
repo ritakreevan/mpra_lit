@@ -73,7 +73,7 @@ write.table(rs.id, file = "rs.id_bcftools.tsv", row.names = FALSE, col.names = F
 ## Contains chrom-pos-ref-alt
 #--------------------------------------
 
-colnames(rs.pos_bcfout) = c("chrom", "pos", "ref", "alt")
+colnames(rs.pos_bcfout) = c("chrom", "pos", "ref", "alt","rs.id")
 tested_variants = rbind(tested_variants, rs.pos_bcfout)
 tested_variants = unique(tested_variants)
 
