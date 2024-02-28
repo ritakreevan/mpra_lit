@@ -25,7 +25,7 @@ read_table <- function(folder_path) {
     master_table <- rbind(master_table, unique_lines)
   }
   
-  col_names <- c("chrom", "pos", "ref", "alt")
+  col_names <- c("chrom", "pos", "ref", "alt", "author")
   names(master_table) <- col_names
   assign("tested_variants", master_table, envir = .GlobalEnv)
   return(master_table)
