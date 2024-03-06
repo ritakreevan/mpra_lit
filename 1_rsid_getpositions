@@ -1,0 +1,127 @@
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(biomartr)
+library(motifbreakR)
+library(cowplot)
+library(BSgenome.Hsapiens.UCSC.hg19)
+
+#--------------------------
+##MPRA meta-analysis study
+#04.03.2024
+#--------------------------
+
+#----------------------------------------------------------------------
+## Read in rs-id and rs-id positions from bcftools, merge with alleles
+##output will be tested alleles and chrom-position
+#1 Ajore
+#2 Joslin
+#3 Klein
+#4 Myint
+#5 Castaldi
+# Colnames = "rsid", "allele1" and "allele2"
+#----------------------------------------------------------------------
+
+#-------------------
+##Ajore
+##Input = 820
+##Output bcf = 816
+##non-annotated n=4
+#------------------
+
+#read in the input original file, that went into bcftools
+
+file_path = "/Users/rita/Documents/Analuusid/MPRA_meta/Tested_variants/rs_id/ajore_rsid_alleles.csv"
+ajore_tested_variants = fread(file_path, header = FALSE)
+colnames(ajore_tested_variants) = c("rsid", "allele1", "allele2")
+unique(ajore_tested_variants$rsid)
+
+#read in the output from bcftools
+
+ajore_output = fread("/Users/rita/Documents/Analuusid/MPRA_meta/fromBCF_rsid/ajore.tsv")
+colnames(ajore_output) = c("chrom", "pos", "rsid")
+
+#merge the input and output tables by rs-id
+
+ajore_variants = merge(ajore_output, ajore_tested_variants, by = "rsid")
+
+#what went lost, so that I got 816 from the bcftools
+ajore_missing = anti_join(ajore_tested_variants, ajore_output, by = "rsid")
+
+#-------------------------
+##Joslin
+##Input = 2396
+## output bcftools = 2638
+##non-annotated n=42
+#-------------------------
+
+joslin_input = fread("/Users/rita/Documents/Analuusid/MPRA_meta/Tested_variants/rs_id/joslin_alleles_snp.tsv", header = FALSE)
+colnames(joslin_input) = c("rsid", "allele1", "allele2")
+unique(joslin_input$rsid)
+
+joslin_output = fread("/Users/rita/Documents/Analuusid/MPRA_meta/fromBCF_rsid/joslin_pos.tsv")
+colnames(joslin_output) = c("chrom", "pos", "rsid")
+
+joslin_duplic <- joslin_output[duplicated(joslin_output$rsid) | duplicated(joslin_output$rsid, fromLast=TRUE),]
+joslin_output$rsid %>% table()
+joslin_output$rsid %>% unique()
+
+joslin_variants = merge(joslin_output, joslin_input, by = "rsid")
+joslin_missing = anti_join(joslin_input, joslin_output, by = "rsid")
+
+joslin_uniq = unique(joslin_variants$rsid)
+joslin_input_uniq = unique(joslin_input$rsid)
+
+#----------------
+##Klein
+##Input = 1132
+##Output = 1425
+##non-annotated = 21
+#----------------
+
+klein_input = fread("/Users/rita/Documents/Analuusid/MPRA_meta/Tested_variants/rs_id/klein_rs_alleles.tsv", header = FALSE)
+colnames(klein_input) = c("rsid", "allele1", "allele2")
+unique(klein_input$rsid)
+
+klein_duplic <- klein_input[duplicated(klein_input$rsid) | duplicated(klein_input$rsid, fromLast=TRUE),]
+klein_input$rsid %>% table()
+klein_input$rsid %>% unique()
+
+klein_output = fread("/Users/rita/Documents/Analuusid/MPRA_meta/fromBCF_rsid/klein_pos.tsv")
+colnames(klein_output) = c("chrom", "pos", "rsid")
+klein_variants = merge(klein_output, klein_input, by = "rsid")
+klein_missing = anti_join(klein_input, klein_output, by = "rsid")
+
+#----------------
+##Myint
+##Input n = 1079
+#Output n = 1069
+## non-annotated n= 10
+#---------------
+myint_input = fread("/Users/rita/Documents/Analuusid/MPRA_meta/Tested_variants/rs_id/myint_alleles_snp_hg38.tsv", header = FALSE)
+colnames(myint_input) = c("rsid", "allele1", "allele2")
+unique(myint_input$rsid)
+
+myint_output = fread("/Users/rita/Documents/Analuusid/MPRA_meta/fromBCF_rsid/myint_pos.tsv")
+colnames(myint_output) = c("chrom", "pos", "rsid")
+myint_variants = merge(myint_output, myint_input, by = "rsid")
+myint_missing = anti_join(myint_input, myint_output, by = "rsid")
+
+#---------------
+##Castaldi
+##Input = 296
+#Output = 296
+#-------------
+castaldi_input = fread("/Users/rita/Documents/Analuusid/MPRA_meta/Tested_variants/rs_id/castaldicazzo.tsv", header = FALSE)
+colnames(castaldi_input) = c("rsid", "allele1", "allele2")
+unique(castaldi_input$rsid)
+
+catsaldi_output = fread("/Users/rita/Documents/Analuusid/MPRA_meta/fromBCF_rsid/castaldifuker.tsv")
+colnames(catsaldi_output) = c("chrom", "pos", "rsid")
+castaldi_variants = merge(catsaldi_output, castaldi_input, by = "rsid")
+castaldi_missing = anti_join(castaldi_input, catsaldi_output, by = "rsid")
+
+
+
+
