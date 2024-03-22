@@ -1,0 +1,3 @@
+VEP_input_normalised_220324.vcf -Oz -o VEP_input_normalised_220324.vcf.gz && bcftools index VEP_input_normalised_220324.vcf.gz
+
+bcftools annotate -x ID VEP_input_normalised_220324.vcf.gz| bcftools annotate --set-id +'%CHROM:%POS:%REF:%ALT' -Oz -o my.vcf.IDs.gz && bcftools index my.vcf.IDs.gz
