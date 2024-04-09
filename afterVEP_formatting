@@ -1,0 +1,397 @@
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(GenomicRanges)
+library(biomartr)
+library(motifbreakR)
+library(cowplot)
+library(annotatr)
+
+unique_variants = unique(tested_variants_all_hg38$pos)
+num_uniq = length(unique_variants)
+
+tested_variants_all_hg38$Uploaded_variation <- paste(tested_variants_all_hg38$chrom,
+                                                     "_",
+                                                     tested_variants_all_hg38$pos,
+                                                     "_",
+                                                     tested_variants_all_hg38$ref,
+                                                     "/",
+                                                     tested_variants_all_hg38$alt,
+                                                     sep = "")
+scores.hll_hg38$Uploaded_variation = paste(scores.hll_hg38$chrom,
+                                           "_",
+                                           scores.hll_hg38$pos,
+                                           "_",
+                                           scores.hll_hg38$ref,
+                                           "/",
+                                           scores.hll_hg38$alt,
+                                           sep = "")
+
+scores.hll_hg38 = scores.hll_hg38 %>% distinct(Uploaded_variation, .keep_all = TRUE)
+#------------------------------------------
+##18.03.24
+##Combine the VEP and tested_variant table
+##to have author behind every variant
+#-------------------------------------------
+VEP_hg38_dup = VEP_hg38
+VEP_combined = merge(VEP_hg38, tested_variants_all_hg38, by = "Uploaded_variation")
+VEP_combined = left_join(VEP_combined, scores.hll_hg38, by = "Uploaded_variation")
+
+#-----------------------------------------------------------------------------------
+##Count how many unique variants have more than one value in the Consequence column
+#-----------------------------------------------------------------------------------
+VEP_combined <- VEP_combined %>%
+  mutate(num_values = str_count(Consequence, ",") + 1)
+
+variants_with_multiple_values <- VEP_combined %>%
+  filter(num_values > 1)
+
+num_unique_variants_with_multiple_values <- variants_with_multiple_values %>%
+  distinct(Uploaded_variation) %>%
+  nrow()
+#-------------------------------------------------------------
+##Split comma separated consequences values into multple rows
+#-------------------------------------------------------------
+
+VEP_combined = separate_rows(VEP_combined, Consequence, sep = ",")
+
+#----------------------------------------
+##Make meta groups of the "Consequences"
+#----------------------------------------
+consequence_mappings <- list(
+  UTR = c("3_prime_UTR_variant", "stop_lost", "5_prime_UTR_variant", "start_lost"),
+  Regulatory = c("upstream_gene_variant", "downstream_gene_variant", 
+                 "regulatory_region_variant", "TF_binding_site_variant", 
+                 "mature_miRNA_variant","non_coding_transcript_variant", 
+                 "NMD_transcript_variant"),
+  Intergenic = "intergenic_variant",
+  Intron = "intron_variant",
+  Exon = c("missense_variant", "synonymous_variant", "stop_gained", 
+           "stop_retained_variant", "incomplete_terminal_codon_variant", 
+           "coding_sequence_variant", "non_coding_transcript_exon_variant", "frameshift_variant"),
+  Splice = c("splice_acceptor_variant", "splice_donor_variant", "splice_region_variant",
+             "splice_polypyrimidine_tract_variant", "splice_donor_region_variant",
+             "splice_donor_5th_base_variant"))
+
+map_consequences <- function(variant) {
+  for (group in names(consequence_mappings)) {
+    if (variant %in% consequence_mappings[[group]]) {
+      return(group)
+    }
+  }
+  return("Unknown_pedekas")
+}
+
+VEP_combined$Grouping_consequences <- sapply(VEP_combined$Consequence, 
+                                                         map_consequences)
+
+
+#-------------------
+##Rank consequences
+#-------------------
+variant_consequences <- c(
+  "transcript_ablation", "splice_acceptor_variant", "splice_donor_variant",
+  "stop_gained", "frameshift_variant", "stop_lost", "start_lost",
+  "transcript_amplification", "feature_elongation", "feature_truncation",
+  "inframe_insertion", "inframe_deletion", "missense_variant", 
+  "protein_altering_variant", "splice_donor_5th_base_variant",
+  "splice_region_variant", "splice_donor_region_variant",
+  "splice_polypyrimidine_tract_variant", "incomplete_terminal_codon_variant",
+  "start_retained_variant", "stop_retained_variant", "synonymous_variant",
+  "coding_sequence_variant", "mature_miRNA_variant", "5_prime_UTR_variant",
+  "3_prime_UTR_variant", "non_coding_transcript_exon_variant", 
+  "intron_variant", "NMD_transcript_variant", "non_coding_transcript_variant",
+  "coding_transcript_variant", "upstream_gene_variant", 
+  "downstream_gene_variant", "TFBS_ablation", "TFBS_amplification",
+  "TF_binding_site_variant", "regulatory_region_ablation",
+  "regulatory_region_amplification", "regulatory_region_variant",
+  "intergenic_variant", "sequence_variant"
+)
+
+variant_numbers <- 1:length(variant_consequences)
+
+variant_df <- data.frame(Variant_Consequence = variant_consequences, Severity = variant_numbers)
+
+VEP_combined$Consequence_severity <- match(VEP_combined$Consequence,
+                                           variant_df$Variant_Consequence)
+
+#-----------------
+##Group biotypes
+#-----------------
+IG_gene <- c("IG_C_gene", "IG_J_gene", "IG_V_gene", "IG_D_gene")
+Pseudogene <- c("pseudogene", "IG_C_pseudogene", "TR_V_pseudogene",
+                "TR_J_pseudogene", "IG_V_pseudogene", "unitary_pseudogene",
+                "rRNA_pseudogene", "transcribed_unitary_pseudogene",
+                "transcribed_unprocessed_pseudogene", "unprocessed_pseudogene", 
+                "transcribed_processed_pseudogene", "processed_pseudogene")
+TR_gene <- c("TR_C_gene" ,"TR_D_gene", "TR_J_gene", "TR_V_gene")
+nc_RNA <- c("miRNA", "rRNA", "snoRNA", "misc_RNA", "snRNA", "scaRNA")
+
+map_biotypes_to_group <- function(biotype) {
+  if (biotype %in% IG_gene) {
+    return("IG_gene")
+  } else if (biotype %in% Pseudogene) {
+    return("Pseudogene")
+  } else if (biotype %in% TR_gene) {
+    return("TR_gene")
+  } else if (biotype %in% nc_RNA) {
+    return("nc_RNA")
+  } else {
+    return(biotype) # Retain the original biotype value if it doesn't match any group
+  }
+}
+
+VEP_combined$Biotype_grouping <- sapply(VEP_combined$BIOTYPE, map_biotypes_to_group)
+
+#-------------------------------------------------
+##Try to remove variatns that have same values in
+##Consequence, IMPACT and BIOTYPE
+##Keep the row that has the most values
+#-------------------------------------------------
+
+collapsed_vep_table <- VEP_combined %>%
+  group_by(Uploaded_variation, Consequence, IMPACT, BIOTYPE) %>%
+  mutate(n = n()) %>%
+  arrange(desc(n)) %>%
+  slice_head(n = 1) %>%
+  select(-n)
+
+#---------------------------------
+##Group the clinical significance
+#---------------------------------
+
+clinvar_mapping <- c(
+  "-" = "Not Included",
+  "benign" = "Benign or Likely Benign",
+  "uncertain_significance" = "Variant of Uncertain Significance",
+  "drug_response" = "Not Included",
+  "likely_benign" = "Benign or Likely Benign",
+  "benign/likely_benign" = "Benign or Likely Benign",
+  "benign,benign/likely_benign" = "Benign or Likely Benign",
+  "benign,likely_benign" = "Benign or Likely Benign",
+  "uncertain_significance,benign,benign/likely_benign" = "Benign or Likely Benign",
+  "benign,likely_benign,uncertain_significance,benign/likely_benign" = "Benign or Likely Benign",
+  "conflicting_interpretations_of_pathogenicity,benign,uncertain_significance" = "Conflicting Interpretations",
+  "benign,uncertain_significance" = "Benign or Likely Benign",
+  "benign,likely_benign,uncertain_significance" = "Benign or Likely Benign",
+  "uncertain_significance,benign,likely_benign" = "Benign or Likely Benign",
+  "benign/likely_benign,benign" = "Benign or Likely Benign",
+  "benign,not_provided" = "Benign or Likely Benign",
+  "uncertain_significance,conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "benign,likely_benign,benign/likely_benign" = "Benign or Likely Benign",
+  "benign,conflicting_interpretations_of_pathogenicity,likely_benign" = "Conflicting Interpretations",
+  "risk_factor,benign" = "Not Included",
+  "benign,conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "uncertain_significance,likely_benign" = "Benign or Likely Benign",
+  "affects" = "Not Included",
+  "benign/likely_benign,benign,likely_benign" = "Benign or Likely Benign",
+  "conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "likely_benign,uncertain_significance" = "Benign or Likely Benign",
+  "likely_benign,benign/likely_benign" = "Benign or Likely Benign",
+  "uncertain_significance,conflicting_interpretations_of_pathogenicity,likely_benign" = "Conflicting Interpretations",
+  "Not Included" = "Not Included",
+  "drug_response,benign" = "Not Included",
+  "not_provided,benign" = "Not Included",
+  "benign,pathogenic" = "Pathogenic or Likely Pathogenic",
+  "benign,likely_pathogenic" = "Pathogenic or Likely Pathogenic",
+  "conflicting_interpretations_of_pathogenicity,uncertain_significance,pathogenic" = "Pathogenic or Likely Pathogenic",
+  "conflicting_interpretations_of_pathogenicity,likely_benign" = "Conflicting Interpretations",
+  "benign,likely_pathogenic,benign/likely_benign" = "Pathogenic or Likely Pathogenic",
+  "benign,uncertain_significance,likely_benign" = "Benign or Likely Benign",
+  "benign/likely_benign,likely_benign" = "Benign or Likely Benign",
+  "not_provided" = "Not Included",
+  "benign,risk_factor" = "Not Included",
+  "risk_factor,conflicting_interpretations_of_pathogenicity,uncertain_significance,benign" = "Not Included",
+  "likely_pathogenic" = "Pathogenic or Likely Pathogenic",
+  "benign/likely_benign,uncertain_significance,likely_benign" = "Benign or Likely Benign",
+  "uncertain_significance,likely_benign,benign/likely_benign" = "Benign or Likely Benign",
+  "protective,association,pathogenic" = "Not Included",
+  "uncertain_significance,benign" = "Benign or Likely Benign",
+  "uncertain_significance,benign,conflicting_interpretations_of_pathogenicity,benign/likely_benign" = "Conflicting Interpretations",
+  "benign,likely_benign,conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "conflicting_interpretations_of_pathogenicity,likely_benign,benign/likely_benign" = "Conflicting Interpretations",
+  "likely_benign,conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "benign/likely_benign,conflicting_interpretations_of_pathogenicity,likely_benign" = "Conflicting Interpretations",
+  "benign,benign/likely_benign,conflicting_interpretations_of_pathogenicity,likely_benign" = "Conflicting Interpretations",
+  "risk_factor" = "Not Included",
+  "risk_factor,benign,likely_benign" = "Not Included",
+  "benign,benign/likely_benign,likely_benign" = "Benign or Likely Benign",
+  "benign,likely_benign,not_provided" = "Benign or Likely Benign",
+  "conflicting_interpretations_of_pathogenicity,benign,likely_benign" = "Conflicting Interpretations",
+  "conflicting_interpretations_of_pathogenicity,benign" = "Conflicting Interpretations",
+  "benign,association" = "Not Included",
+  "benign/likely_benign,uncertain_significance,benign,likely_benign" = "Benign or Likely Benign",
+  "conflicting_interpretations_of_pathogenicity,uncertain_significance,likely_benign" = "Conflicting Interpretations",
+  "conflicting_interpretations_of_pathogenicity,benign/likely_benign" = "Conflicting Interpretations",
+  "association,uncertain_significance,benign" = "Not Included",
+  "uncertain_significance,association" = "Variant of Uncertain Significance",
+  "uncertain_significance,likely_benign,conflicting_interpretations_of_pathogenicity,pathogenic" = "Pathogenic or Likely Pathogenic",
+  "benign,uncertain_significance,likely_benign,conflicting_interpretations_of_pathogenicity" = "Benign or Likely Benign",
+  "uncertain_significance,likely_benign,conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "benign/likely_benign,not_provided,benign" = "Benign or Likely Benign",
+  "risk_factor,not_provided,conflicting_interpretations_of_pathogenicity,pathogenic" = "Not Included",
+  "not_provided,risk_factor,association,uncertain_significance,pathogenic" = "Not Included",
+  "benign/likely_benign,benign,uncertain_significance" = "Benign or Likely Benign",
+  "benign,uncertain_significance,benign/likely_benign" = "Benign or Likely Benign",
+  "benign/likely_benign,likely_benign,conflicting_interpretations_of_pathogenicity" = "Benign or Likely Benign",
+  "not_provided,likely_benign" = "Not Included")
+
+map_clinvar <- function(x) {
+  ifelse(is.na(x) | !(x %in% names(clinvar_mapping)), x, clinvar_mapping[x])
+}
+
+VEP_combined <- VEP_combined %>%
+  mutate(ClinVar_group = map_clinvar(CLIN_SIG))
+
+vepcombin1 = VEP_combined
+#-----------
+##PolyPhen
+#-----------
+
+polyphen_hg38 =  VEP_combined %>%
+  filter(PolyPhen != "-") %>%  # Remove rows where PolyPhen is "-"
+  arrange(PolyPhen)  # Sort the table based on the PolyPhen values
+
+polyphen_hg38 = polyphen_hg38 %>%
+  distinct(Uploaded_variation, .keep_all = TRUE)
+
+duplicated_rows <- polyphen_hg38[duplicated(polyphen_hg38$Uploaded_variation) | 
+                                   duplicated(polyphen_hg38$Uploaded_variation, fromLast = TRUE), ]
+
+polyphen_hg38 <- polyphen_hg38 %>%
+  mutate(PolyPhen_Group = case_when(
+    grepl("unknown", PolyPhen, ignore.case = TRUE) ~ "Unknown",
+    grepl("possibly_damaging", PolyPhen, ignore.case = TRUE) ~ "Possibly damaging",
+    grepl("probably_damaging", PolyPhen, ignore.case = TRUE) ~ "Probably damaging",
+    grepl("benign", PolyPhen, ignore.case = TRUE) ~ "Benign",
+    TRUE ~ "Other"
+  ))
+
+ggplot(polyphen_hg38, aes(x = Biotype_grouping, fill = PolyPhen_Group)) +
+  geom_bar(position = "stack") +
+  labs(title = "Distribution of PolyPhen group across biotype",
+       x = "Biotype", y = "Count", fill = "PolyPhen Group") +
+  theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#logscale
+ggplot(polyphen_hg38, aes(x = BIOTYPE, fill = PolyPhen_Group)) +
+  geom_bar(position = "stack") +
+  labs(title = "Distribution of PolyPhen group across biotype",
+       x = "Biotype", y = "Count", fill = "PolyPhen Group") +
+  theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_log10()
+
+#------------
+##SIFT group
+#------------
+
+map_sift_to_group <- function(sift_result) {
+  if (grepl("tolerated_low_confidence", sift_result, ignore.case = TRUE)) {
+    return("Tolerated low confidence")
+  } else if (grepl("deleterious_low_confidence", sift_result, ignore.case = TRUE)) {
+    return("Deleterious low confidence")
+  } else if (grepl("deleterious", sift_result, ignore.case = TRUE)) {
+    return("Deleterious")
+  } else if (grepl("tolerated", sift_result, ignore.case = TRUE)) {
+    return("Tolerated")
+  } else {
+    return("Unknown")
+  }
+}
+
+sift_hg38 =  VEP_combined %>%
+  filter(SIFT != "-") %>%  # Remove rows where SIFT is "-"
+  arrange(SIFT)  # Sort the table based on the SIFT values
+
+sift_hg38  <- sift_hg38  %>%
+  mutate(SIFT_Group = sapply(SIFT, map_sift_to_group))
+
+sift_hg38 = sift_hg38 %>%
+  distinct(Uploaded_variation, .keep_all = TRUE)
+
+ggplot(sift_hg38, aes(x = Grouping_consequences, fill = SIFT_Group)) +
+  geom_bar(position = "stack") +
+  labs(title = "Distribution of SIFT group across consequence",
+       x = "Consequence", y = "Count", fill = "SIFT Group") +
+  theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+ggplot(sift_hg38 , aes(x = Consequence, fill = SIFT_Group)) +
+  geom_bar(position = "stack") +
+  labs(title = "Distribution of SIFT group across biotype",
+       x = "Consequence", y = "Count", fill = "SIFT Group") +
+  theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_log10()
+
+#--------------
+##CADD scores
+#-------------
+cadd_phred = VEP_combined %>%
+  filter(CADD_raw_rankscore != "-")
+
+cadd_phred = cadd_phred %>%
+  distinct(Location.x, .keep_all = TRUE)
+
+cadd_phred = merge(cadd_phred, scores.hll_hg38, by = "pos")
+cadd_phred$CADD_raw_rankscore <- as.numeric(cadd_phred$CADD_raw_rankscore)
+
+ggplot(cadd_phred, aes(x = CADD_raw_rankscore, y = score)) +
+  geom_point() +
+  labs(x = "CADD Raw Rankscore", y = "GPN-MSA scores") +
+  ggtitle("Scatter plot of GPN-MSA scores vs CADD Raw Rankscore")
+
+#-------------------------
+##Songlab output, GPN-MSA
+#-------------------------
+
+ggplot(collapsed_vep_table, aes(x = Grouping_consequences, y = score)) +
+  geom_violin(fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Scores across grouped consequences",
+       x = "Consequences", y = "Score") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+#------------------
+##Selected columns
+#------------------
+
+selected_columns <- c("Uploaded_variation", "Location.x", "Allele", 
+                      "Feature_type", "Consequence", 
+                      "IMPACT", "VARIANT_CLASS", "BIOTYPE", "GENE_PHENO", 
+                      "SIFT", "PolyPhen", "AF", "AFR_AF", "AMR_AF", 
+                      "EAS_AF", "EUR_AF", "SAS_AF", "gnomADe_AF", 
+                      "gnomADe_AFR_AF", "gnomADe_AMR_AF", "gnomADe_ASJ_AF", 
+                      "gnomADe_EAS_AF", "gnomADe_FIN_AF", "gnomADe_NFE_AF", 
+                      "gnomADe_OTH_AF", "gnomADe_SAS_AF", "gnomADg_AF", 
+                      "gnomADg_AFR_AF", "gnomADg_AMI_AF", "gnomADg_AMR_AF", 
+                      "gnomADg_ASJ_AF", "gnomADg_EAS_AF", "gnomADg_FIN_AF", 
+                      "gnomADg_MID_AF", "gnomADg_NFE_AF", "gnomADg_OTH_AF", 
+                      "gnomADg_SAS_AF", "MAX_AF", "MAX_AF_POPS", "PHENO", 
+                      "TRANSCRIPTION_FACTORS", "CADD_raw_rankscore", 
+                      "chrom.x", "pos.x", "ref.x", "alt.x", "author", 
+                      "score", "num_values", "Grouping_consequences", 
+                      "Biotype_grouping", "ClinVar_group")
+
+selected_data <- VEP_combined %>%
+  dplyr::select(all_of(selected_columns))
+
+
+
+#------------------
+##Reshape the data
+#------------------
+
+df_reshaped <- selected_data %>%
+  group_by(Uploaded_variation, Grouping_consequences) %>%
+  summarise(count = n()) %>%
+  pivot_wider(names_from = Grouping_consequences, values_from = count, values_fill = 0)
+
+final_data <- selected_data %>%
+  distinct() %>%
+  left_join(df_reshaped, by = "Uploaded_variation")
+
