@@ -1,0 +1,240 @@
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(GenomicRanges)
+library(biomartr)
+library(motifbreakR)
+library(cowplot)
+library(readr)
+
+#---------------------------
+##Post VEP data formatting
+# table =vep_output
+# lines n= 394263
+# unique lines n = 118453
+#---------------------------
+
+vep = VEP_input_normalised.vep_output %>% select(Uploaded_variation, Location, Allele,
+                                                 Feature_type, Consequence, IMPACT, VARIANT_CLASS,
+                                                 BIOTYPE, SIFT, PolyPhen, AF, AFR_AF, AMR_AF, EAS_AF,
+                                                 EUR_AF, SAS_AF, gnomADg_AF,gnomADg_AFR_AF, gnomADg_AMI_AF,
+                                                 gnomADg_AMR_AF, gnomADg_ASJ_AF,gnomADg_EAS_AF, gnomADg_FIN_AF,
+                                                 gnomADg_MID_AF,gnomADg_NFE_AF, gnomADg_OTH_AF,gnomADg_SAS_AF,
+                                                 MAX_AF, MAX_AF_POPS, CLIN_SIG, CADD_raw_rankscore)
+
+uniq = vep %>% distinct(Uploaded_variation, .keep_all = TRUE)
+
+colnames(gpn_msa) <- c("chrom", "pos", "ref", "alt", "score")
+vep$Uploaded_variation %>% unique() %>% length()
+sum(unique(vep$Uploaded_variation) %in% unique(input_vep$Uploaded_variation))
+notfound = unique(input_vep$Uploaded_variation)[!unique(input_vep$Uploaded_variation) %in% unique(vep$Uploaded_variation)]
+#---------------------------------------------
+##Make "uploaded_variation" to combine tables
+#---------------------------------------------
+input_vep$Uploaded_variation = paste0(input_vep$chrom, "_", input_vep$pos,
+                                            "_", input_vep$ref, "/", input_vep$alt)
+
+gpn_msa$Uploaded_variation = paste0(gpn_msa$chrom, "_", gpn_msa$pos,
+                                      "_", gpn_msa$ref, "/", gpn_msa$alt)
+
+#------------------------------------
+##Combine the tables with VEP output
+##merged_vep n= 888575
+#------------------------------------
+merged_vep = merge(vep, input_vep, by = "Uploaded_variation")
+merged_vep = left_join(merged_vep, gpn_msa, by = "Uploaded_variation")
+
+#-----------
+##PolyPhen
+#-----------
+merged_vep <- merged_vep %>%
+  mutate(PolyPhen = case_when(
+    grepl("unknown", PolyPhen, ignore.case = TRUE) ~ "Unknown",
+    grepl("possibly_damaging", PolyPhen, ignore.case = TRUE) ~ "Possibly damaging",
+    grepl("probably_damaging", PolyPhen, ignore.case = TRUE) ~ "Probably damaging",
+    grepl("benign", PolyPhen, ignore.case = TRUE) ~ "Benign",
+    TRUE ~ "Other"
+  ))
+
+#------
+##SIFT
+#------
+map_sift_to_group <- function(sift_result) {
+  if (grepl("tolerated_low_confidence", sift_result, ignore.case = TRUE)) {
+    return("Tolerated low confidence")
+  } else if (grepl("deleterious_low_confidence", sift_result, ignore.case = TRUE)) {
+    return("Deleterious low confidence")
+  } else if (grepl("deleterious", sift_result, ignore.case = TRUE)) {
+    return("Deleterious")
+  } else if (grepl("tolerated", sift_result, ignore.case = TRUE)) {
+    return("Tolerated")
+  } else {
+    return("Unknown")
+  }
+}
+
+
+merged_vep <- merged_vep %>%
+  mutate(SIFT = case_when(
+    grepl("deleterious_low_confidence", SIFT, ignore.case = TRUE) ~ "Deleterious",
+    grepl("tolerated", SIFT, ignore.case = TRUE) ~ "Tolerated",
+    grepl("tolerated_low_confidence", SIFT, ignore.case = TRUE) ~ "Tolerated",
+    grepl("deleterious", SIFT, ignore.case = TRUE) ~ "Deleterious",
+    TRUE ~ "NA"
+  ))
+
+#------------
+##Metagroups
+#------------
+
+#-----------------
+##Group biotypes
+#-----------------
+IG_gene <- c("IG_C_gene", "IG_J_gene", "IG_V_gene", "IG_D_gene")
+Pseudogene <- c("pseudogene", "IG_C_pseudogene", "TR_V_pseudogene",
+                "TR_J_pseudogene", "IG_V_pseudogene", "unitary_pseudogene",
+                "rRNA_pseudogene", "transcribed_unitary_pseudogene",
+                "transcribed_unprocessed_pseudogene", "unprocessed_pseudogene", 
+                "transcribed_processed_pseudogene", "processed_pseudogene")
+TR_gene <- c("TR_C_gene" ,"TR_D_gene", "TR_J_gene", "TR_V_gene")
+nc_RNA <- c("miRNA", "rRNA", "snoRNA", "misc_RNA", "snRNA", "scaRNA")
+
+map_biotypes_to_group <- function(biotype) {
+  if (biotype %in% IG_gene) {
+    return("IG_gene")
+  } else if (biotype %in% Pseudogene) {
+    return("Pseudogene")
+  } else if (biotype %in% TR_gene) {
+    return("TR_gene")
+  } else if (biotype %in% nc_RNA) {
+    return("nc_RNA")
+  } else {
+    return(biotype) # Retain the original biotype value if it doesn't match any group
+  }
+}
+
+
+merged_vep$Biotype_grouping <- sapply(merged_vep$BIOTYPE, map_biotypes_to_group)
+
+
+#-------------
+##Consequence
+#-------------
+merged_vep = separate_rows(merged_vep, Consequence, sep = ",")
+
+consequence_mappings <- list(
+  UTR = c("3_prime_UTR_variant", "stop_lost", "5_prime_UTR_variant", "start_lost"),
+  Regulatory = c("upstream_gene_variant", "downstream_gene_variant", 
+                 "regulatory_region_variant", "TF_binding_site_variant", 
+                 "mature_miRNA_variant","non_coding_transcript_variant", 
+                 "NMD_transcript_variant"),
+  Intergenic = "intergenic_variant",
+  Intron = "intron_variant",
+  Exon = c("missense_variant", "synonymous_variant", "stop_gained", 
+           "stop_retained_variant", "incomplete_terminal_codon_variant", 
+           "coding_sequence_variant", "non_coding_transcript_exon_variant", "frameshift_variant"),
+  Splice = c("splice_acceptor_variant", "splice_donor_variant", "splice_region_variant",
+             "splice_polypyrimidine_tract_variant", "splice_donor_region_variant",
+             "splice_donor_5th_base_variant"))
+
+map_consequences <- function(variant) {
+  for (group in names(consequence_mappings)) {
+    if (variant %in% consequence_mappings[[group]]) {
+      return(group)
+    }
+  }
+  return("Unknown_pedekas")
+}
+
+merged_vep$Grouping_consequences <- sapply(merged_vep$Consequence, 
+                                             map_consequences)
+
+
+#---------------------------------
+##Group the clinical significance
+#---------------------------------
+
+clinvar_mapping <- c(
+  "-" = "Not Included",
+  "benign" = "Benign or Likely Benign",
+  "uncertain_significance" = "Variant of Uncertain Significance",
+  "drug_response" = "Not Included",
+  "likely_benign" = "Benign or Likely Benign",
+  "benign/likely_benign" = "Benign or Likely Benign",
+  "benign,benign/likely_benign" = "Benign or Likely Benign",
+  "benign,likely_benign" = "Benign or Likely Benign",
+  "uncertain_significance,benign,benign/likely_benign" = "Benign or Likely Benign",
+  "benign,likely_benign,uncertain_significance,benign/likely_benign" = "Benign or Likely Benign",
+  "conflicting_interpretations_of_pathogenicity,benign,uncertain_significance" = "Conflicting Interpretations",
+  "benign,uncertain_significance" = "Benign or Likely Benign",
+  "benign,likely_benign,uncertain_significance" = "Benign or Likely Benign",
+  "uncertain_significance,benign,likely_benign" = "Benign or Likely Benign",
+  "benign/likely_benign,benign" = "Benign or Likely Benign",
+  "benign,not_provided" = "Benign or Likely Benign",
+  "uncertain_significance,conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "benign,likely_benign,benign/likely_benign" = "Benign or Likely Benign",
+  "benign,conflicting_interpretations_of_pathogenicity,likely_benign" = "Conflicting Interpretations",
+  "risk_factor,benign" = "Not Included",
+  "benign,conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "uncertain_significance,likely_benign" = "Benign or Likely Benign",
+  "affects" = "Not Included",
+  "benign/likely_benign,benign,likely_benign" = "Benign or Likely Benign",
+  "conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "likely_benign,uncertain_significance" = "Benign or Likely Benign",
+  "likely_benign,benign/likely_benign" = "Benign or Likely Benign",
+  "uncertain_significance,conflicting_interpretations_of_pathogenicity,likely_benign" = "Conflicting Interpretations",
+  "Not Included" = "Not Included",
+  "drug_response,benign" = "Not Included",
+  "not_provided,benign" = "Not Included",
+  "benign,pathogenic" = "Pathogenic or Likely Pathogenic",
+  "benign,likely_pathogenic" = "Pathogenic or Likely Pathogenic",
+  "conflicting_interpretations_of_pathogenicity,uncertain_significance,pathogenic" = "Pathogenic or Likely Pathogenic",
+  "conflicting_interpretations_of_pathogenicity,likely_benign" = "Conflicting Interpretations",
+  "benign,likely_pathogenic,benign/likely_benign" = "Pathogenic or Likely Pathogenic",
+  "benign,uncertain_significance,likely_benign" = "Benign or Likely Benign",
+  "benign/likely_benign,likely_benign" = "Benign or Likely Benign",
+  "not_provided" = "Not Included",
+  "benign,risk_factor" = "Not Included",
+  "risk_factor,conflicting_interpretations_of_pathogenicity,uncertain_significance,benign" = "Not Included",
+  "likely_pathogenic" = "Pathogenic or Likely Pathogenic",
+  "benign/likely_benign,uncertain_significance,likely_benign" = "Benign or Likely Benign",
+  "uncertain_significance,likely_benign,benign/likely_benign" = "Benign or Likely Benign",
+  "protective,association,pathogenic" = "Not Included",
+  "uncertain_significance,benign" = "Benign or Likely Benign",
+  "uncertain_significance,benign,conflicting_interpretations_of_pathogenicity,benign/likely_benign" = "Conflicting Interpretations",
+  "benign,likely_benign,conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "conflicting_interpretations_of_pathogenicity,likely_benign,benign/likely_benign" = "Conflicting Interpretations",
+  "likely_benign,conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "benign/likely_benign,conflicting_interpretations_of_pathogenicity,likely_benign" = "Conflicting Interpretations",
+  "benign,benign/likely_benign,conflicting_interpretations_of_pathogenicity,likely_benign" = "Conflicting Interpretations",
+  "risk_factor" = "Not Included",
+  "risk_factor,benign,likely_benign" = "Not Included",
+  "benign,benign/likely_benign,likely_benign" = "Benign or Likely Benign",
+  "benign,likely_benign,not_provided" = "Benign or Likely Benign",
+  "conflicting_interpretations_of_pathogenicity,benign,likely_benign" = "Conflicting Interpretations",
+  "conflicting_interpretations_of_pathogenicity,benign" = "Conflicting Interpretations",
+  "benign,association" = "Not Included",
+  "benign/likely_benign,uncertain_significance,benign,likely_benign" = "Benign or Likely Benign",
+  "conflicting_interpretations_of_pathogenicity,uncertain_significance,likely_benign" = "Conflicting Interpretations",
+  "conflicting_interpretations_of_pathogenicity,benign/likely_benign" = "Conflicting Interpretations",
+  "association,uncertain_significance,benign" = "Not Included",
+  "uncertain_significance,association" = "Variant of Uncertain Significance",
+  "uncertain_significance,likely_benign,conflicting_interpretations_of_pathogenicity,pathogenic" = "Pathogenic or Likely Pathogenic",
+  "benign,uncertain_significance,likely_benign,conflicting_interpretations_of_pathogenicity" = "Benign or Likely Benign",
+  "uncertain_significance,likely_benign,conflicting_interpretations_of_pathogenicity" = "Conflicting Interpretations",
+  "benign/likely_benign,not_provided,benign" = "Benign or Likely Benign",
+  "risk_factor,not_provided,conflicting_interpretations_of_pathogenicity,pathogenic" = "Not Included",
+  "not_provided,risk_factor,association,uncertain_significance,pathogenic" = "Not Included",
+  "benign/likely_benign,benign,uncertain_significance" = "Benign or Likely Benign",
+  "benign,uncertain_significance,benign/likely_benign" = "Benign or Likely Benign",
+  "benign/likely_benign,likely_benign,conflicting_interpretations_of_pathogenicity" = "Benign or Likely Benign",
+  "not_provided,likely_benign" = "Not Included")
+
+map_clinvar <- function(x) {
+  ifelse(is.na(x) | !(x %in% names(clinvar_mapping)), x, clinvar_mapping[x])
+}
+
+merged_vep <- merged_vep %>%
+  mutate(ClinVar_group = map_clinvar(CLIN_SIG))
+
