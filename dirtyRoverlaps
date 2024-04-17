@@ -1,0 +1,110 @@
+Overlaps in R
+15 chrom states
+tested variants
+
+file_list <- list.files(path = "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38", full.names = TRUE)
+> file_list
+ [1] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Adipose"         
+ [2] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/BCells"          
+ [3] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Brain"           
+ [4] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Digestive"       
+ [5] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/ENCODE"          
+ [6] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Epithelial"      
+ [7] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/ES_derived_cells"
+ [8] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/ESC"             
+ [9] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Heart"           
+[10] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/iPSC"            
+[11] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Mesenchymal"     
+[12] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Muscle"          
+[13] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Myosatellite"    
+[14] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Neurospheres"    
+[15] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Other"           
+[16] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Smooth_muscle"   
+[17] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/TCells"          
+[18] "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38/Thymus"          
+> file_list <- list.files(path = "/gpfs/space/home/rita91/mpra_lit/roadmap/combined_hg38", full.names = FALSE)
+> file_list
+ [1] "Adipose"          "BCells"           "Brain"            "Digestive"       
+ [5] "ENCODE"           "Epithelial"       "ES_derived_cells" "ESC"             
+ [9] "Heart"            "iPSC"             "Mesenchymal"      "Muscle"          
+[13] "Myosatellite"     "Neurospheres"     "Other"            "Smooth_muscle"   
+[17] "TCells"           "Thymus"          
+> df_list <- list()
+> for (file in file_list) {
+  # Extract tissue type from file name
+  tissue_type <- gsub("_.*", "", tools::file_path_sans_ext(basename(file)), ignore.case = TRUE)
++ 
+> for (file in file_list) {
+  tissue_type <- gsub("_.*", "", tools::file_path_sans_ext(basename(file)), ignore.case = TRUE)
+
+  df <- read.table(file, header = FALSE, col.names = c("chrom", "start", "end", "chrom_state"))
+  df$tissue_type <- tolower(tissue_type)
+  
+  # Add the modified data frame to the list
+  df_list[[length(df_list) + 1]] <- df
+}
+
+combined_df <- do.call(rbind, df_list)
+> 
+> combined_df <- do.call(rbind, df_list)
+> ls()
+[1] "combined_df" "df"          "df_list"     "file"        "file_list"  
+[6] "tissue_type"
+> head(combined_df)
+  chrom start   end chrom_state tissue_type
+1  chr1 10000 10600       9_Het     adipose
+2  chr1 10600 12800    15_Quies     adipose
+3  chr1 12800 16000      5_TxWk     adipose
+4  chr1 16000 16600        4_Tx     adipose
+5  chr1 16600 19000      5_TxWk     adipose
+6  chr1 19000 96080    15_Quies     adipose
+> tail(combined_df)
+         chrom    start      end chrom_state tissue_type
+55798148  chrY 56887253 57217249    15_Quies      thymus
+55798149  chrM        0      998   13_ReprPC      thymus
+55798150  chrM      998     1598 14_ReprPCWk      thymus
+55798151  chrM     1598    15399       9_Het      thymus
+55798152  chrM    15399    15599 14_ReprPCWk      thymus
+55798153  chrM    15599    16398   13_ReprPC      thymus
+> combined_df$chrom_state <- sub("14_ReprPCWk", "Weak Repressed PolyComb", combined_df$chrom_state)
+combined_df$chrom_state <- sub("1_TssA", "Active TSS", combined_df$chrom_state)
+combined_df$chrom_state <- sub("2_TssAFlnk", "Flanking Active TSS", combined_df$chrom_state)
+combined_df$chrom_state <- sub("3_TxFlnk", "Transcr. at gene 5' and 3'", combined_df$chrom_state)
+combined_df$chrom_state <- sub("4_Tx", "Strong transcription", combined_df$chrom_state)
+combined_df$chrom_state <- sub("5_TxWk", "Weak transcription", combined_df$chrom_state)
+combined_df$chrom_state <- sub("6_EnhG", "Genic enhancers", combined_df$chrom_state)
+combined_df$chrom_state <- sub("7_Enh", "Enhancers", combined_df$chrom_state)
+combined_df$chrom_state <- sub("8_ZNF/Rpts", "ZNF genes & repeats", combined_df$chrom_state)
+combined_df$chrom_state <- sub("9_Het", "Heterochromatin", combined_df$chrom_state)
+combined_df$chrom_state <- sub("10_TssBiv", "Bivalent/Poised TSS", combined_df$chrom_state)
+combined_df$chrom_state <- sub("11_BivFlnk", "Flanking Bivalent TSS/Enh", combined_df$chrom_state)
+combined_df$chrom_state <- sub("12_EnhBiv", "Bivalent Enhancer", combined_df$chrom_state)
+combined_df$chrom_state <- sub("13_ReprPC", "Repressed PolyComb", combined_df$chrom_state)
+combined_df$chrom_state <- sub("15_Quies", "Quiescent/Low", combined_df$chrom_state)
+> head(combined_df)
+  chrom start   end          chrom_state tissue_type
+1  chr1 10000 10600      Heterochromatin     adipose
+2  chr1 10600 12800        Quiescent/Low     adipose
+3  chr1 12800 16000   Weak transcription     adipose
+4  chr1 16000 16600 Strong transcription     adipose
+5  chr1 16600 19000   Weak transcription     adipose
+6  chr1 19000 96080        Quiescent/Low     adipose
+> categorize_state <- function(state) {
+  active_states <- c("Active TSS", "Flanking Active TSS", "Transcr. at gene 5' and 3'",
+                     "Strong transcription", "Weak transcription", "Genic enhancers",
+                     "Enhancers", "ZNF genes & repeats")
+  if (state %in% active_states) {
+    return("Active")
+  } else {
+    return("Inactive")
+  }
+}
+> combined_df$state_activity <- sapply(combined_df$chrom_state, categorize_state)
+> head(combined_df)
+  chrom start   end          chrom_state tissue_type state_activity
+1  chr1 10000 10600      Heterochromatin     adipose       Inactive
+2  chr1 10600 12800        Quiescent/Low     adipose       Inactive
+3  chr1 12800 16000   Weak transcription     adipose         Active
+4  chr1 16000 16600 Strong transcription     adipose         Active
+5  chr1 16600 19000   Weak transcription     adipose         Active
+6  chr1 19000 96080        Quiescent/Low     adipose       Inactive
